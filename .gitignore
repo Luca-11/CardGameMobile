@@ -1,0 +1,93 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+ios/Pods/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+.env*.development
+.env*.test
+.env*.production
+
+# typescript
+*.tsbuildinfo
+
+# Fichiers de build
+build/
+*.apk
+*.aab
+*.ipa
+
+# Fichiers de configuration
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# iOS
+ios/build/
+ios/Pods/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+project.xcworkspace
+
+# Android
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+*.iml
+.gradle/
+local.properties
+*.hprof
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Système
+Thumbs.db
