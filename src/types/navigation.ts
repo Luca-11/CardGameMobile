@@ -2,26 +2,42 @@ import { RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { CardPack } from "./database";
 
-export type RootStackParamList = {
-  MainTabs: undefined;
-  PackDetails: { pack: CardPack };
-  PackOpening: { purchaseId: string };
-  Game: { matchId?: string };
+export type RootTabParamList = {
+  Shop: undefined;
+  Collection: undefined;
   Decks: undefined;
-  DeckBuilder: { deckId?: string };
   Profile: undefined;
-  Settings: undefined;
 };
 
+export type ShopStackParamList = {
+  ShopMain: undefined;
+  PackDetails: { pack: CardPack };
+  PackOpening: { purchaseId: string };
+};
+
+export type CollectionStackParamList = {
+  CollectionMain: undefined;
+  CardDetails: { cardId: string };
+  PackOpening: { purchaseId: string };
+};
+
+export type DecksStackParamList = {
+  DecksList: undefined;
+  DeckEdit: { deckId: string };
+};
+
+export type ShopNavigationProp = NativeStackNavigationProp<ShopStackParamList>;
 export type PackDetailsNavigationProp = NativeStackNavigationProp<
-  RootStackParamList,
+  ShopStackParamList,
   "PackDetails"
 >;
-
 export type PackOpeningNavigationProp = NativeStackNavigationProp<
-  RootStackParamList,
+  ShopStackParamList,
   "PackOpening"
 >;
+export type PackDetailsRouteProp = RouteProp<ShopStackParamList, "PackDetails">;
 
-export type PackDetailsRouteProp = RouteProp<RootStackParamList, "PackDetails">;
-export type PackOpeningRouteProp = RouteProp<RootStackParamList, "PackOpening">;
+export type PackOpeningRouteProp = RouteProp<
+  CollectionStackParamList,
+  "PackOpening"
+>;

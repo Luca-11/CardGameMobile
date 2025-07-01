@@ -1,15 +1,6 @@
 import { create } from "zustand";
+import { GameStoreState, UserCard, Pack, UserPack, Deck, Card } from "../types";
 import {
-  GameStoreState,
-  UserCard,
-  Pack,
-  UserPack,
-  Deck,
-  Card,
-  BuyPackResponse,
-} from "../types";
-import {
-  getSupabase,
   getUserCards,
   getAvailablePacks,
   purchasePack,
@@ -19,6 +10,13 @@ import {
 } from "../services/supabase";
 import { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
+
+interface BuyPackResponse {
+  success: boolean;
+  message: string;
+  purchase_id: string;
+  new_balance: number;
+}
 
 interface GameStore extends GameStoreState {
   // État
@@ -30,11 +28,7 @@ interface GameStore extends GameStoreState {
   loadAvailablePacks: () => Promise<void>;
   loadUserPacks: (userId: string) => Promise<void>;
   loadUserDecks: (userId: string) => Promise<void>;
-  buyPack: (
-    userId: string,
-    packId: string,
-    quantity?: number
-  ) => Promise<BuyPackResponse | null>;
+  buyPack: (packId: string) => Promise<BuyPackResponse>;
   openUserPack: (userPackId: string) => Promise<Card[] | null>;
   createDeck: (
     userId: string,
@@ -95,10 +89,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       console.log("🔵 Store - Début de loadUserCards", { userId });
       set({ loading: true, error: null });
 
-      const { data, error } = await getSupabase()
-        .from("user_cards")
-        .select("*, card:cards(*)")
-        .eq("user_id", userId);
+      const { data, error } = await getUserCards(userId);
 
       console.log("🔵 Store - Réponse de getUserCards", {
         success: !!data,
@@ -166,7 +157,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       set({ loading: true, error: null });
 
       const { data, error } = await supabase
-        .from("pack_purchases")
+        .from("user_packs")
         .select(
           `
           *,
@@ -211,7 +202,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     try {
       set({ loading: true, error: null });
 
-      const { data, error } = await getSupabase()
+      const { data, error } = await supabase
         .from("decks")
         .select("*")
         .eq("user_id", userId)
@@ -240,59 +231,42 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   // Acheter un pack
-  buyPack: async (userId: string, packId: string, quantity = 1) => {
+  buyPack: async (packId: string): Promise<BuyPackResponse> => {
     try {
-      console.log("🔵 Store - Début de buyPack", { userId, packId, quantity });
-      set({ loading: true, error: null });
+      console.log("🔵 Store - Début de buyPack", { packId });
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      const { data, error } = await buyPackService(userId, packId, quantity);
-      console.log("🔵 Store - Réponse de buyPack", { data, error });
-
-      if (error) {
-        console.error("🔴 Store - Erreur buyPack:", error);
-        set({
-          loading: false,
-          error: error.message || "Erreur d'achat du pack",
-        });
-        return null;
+      if (!user) {
+        console.error("🔴 Store - Utilisateur non connecté");
+        throw new Error("Utilisateur non connecté");
       }
 
-      if (!data) {
-        console.error("🔴 Store - Pas de données reçues de buyPack");
-        set({
-          loading: false,
-          error: "Aucune donnée reçue lors de l'achat",
-        });
-        return null;
+      console.log("🔵 Store - Utilisateur trouvé:", user.id);
+      const { success, purchase_id, new_balance, message } =
+        await buyPackService(user.id, packId);
+      console.log("🔵 Store - Résultat de buyPack:", {
+        success,
+        purchase_id,
+        new_balance,
+        message,
+      });
+
+      if (!success) {
+        console.error("🔴 Store - Échec de l'achat:", message);
+        throw new Error(message || "Erreur lors de l'achat");
       }
 
-      const response = data as BuyPackResponse;
+      // Mettre à jour le solde
+      await get().loadUserBalance(user.id);
+      // Recharger les packs de l'utilisateur
+      await get().loadUserPacks(user.id);
 
-      if (response.success) {
-        console.log(
-          "🟢 Store - Achat réussi, mise à jour du solde:",
-          response.new_balance
-        );
-        // Mettre à jour le solde
-        set({ userBalance: response.new_balance });
-
-        // Recharger les packs de l'utilisateur
-        console.log("🔵 Store - Rechargement des packs utilisateur");
-        await get().loadUserPacks(userId);
-      } else {
-        console.log("🔴 Store - Achat échoué:", response.message);
-      }
-
-      set({ loading: false });
-      return response;
+      return { success, purchase_id, new_balance, message: "Achat réussi" };
     } catch (error) {
       console.error("🔴 Store - Exception buyPack:", error);
-      set({
-        loading: false,
-        error:
-          error instanceof Error ? error.message : "Erreur d'achat du pack",
-      });
-      return null;
+      throw error;
     }
   },
 
@@ -301,33 +275,45 @@ export const useGameStore = create<GameStore>((set, get) => ({
     try {
       set({ loading: true, error: null });
 
-      const { data, error } = await getSupabase().functions.invoke(
-        "open-pack",
-        {
-          body: { userPackId },
-        }
-      );
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error("Non authentifié");
+      }
+
+      const { data, error } = await supabase.functions.invoke<{
+        success: boolean;
+        cards: Card[];
+        error?: string;
+      }>("open-pack", {
+        body: { userPackId },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
 
       if (error) {
         set({ loading: false, error: error.message });
         return null;
       }
 
-      if (!data.success || !data.cards) {
-        throw new Error("Error opening pack");
+      if (!data?.success || !data?.cards) {
+        throw new Error("Erreur lors de l'ouverture du pack");
       }
 
       // Recharger les cartes de l'utilisateur
       const {
         data: { user },
-      } = await getSupabase().auth.getUser();
+      } = await supabase.auth.getUser();
       if (user) {
         await get().loadUserCards(user.id);
         await get().loadUserPacks(user.id);
       }
 
       set({ loading: false });
-      return data.cards as Card[];
+      return data.cards;
     } catch (error) {
       console.error("Error opening pack:", error);
       set({
@@ -344,18 +330,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
     try {
       set({ loading: true, error: null });
 
-      const { error } = await getSupabase()
-        .from("decks")
-        .insert([
-          {
-            user_id: userId,
-            name,
-            cards,
-            is_active: false,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-        ]);
+      const { error } = await supabase.from("decks").insert([
+        {
+          user_id: userId,
+          name,
+          cards,
+          is_active: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ]);
 
       if (error) {
         set({ loading: false, error: error.message });
@@ -383,7 +367,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     try {
       set({ loading: true, error: null });
 
-      const { error } = await getSupabase()
+      const { error } = await supabase
         .from("decks")
         .update({
           name,
@@ -397,15 +381,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         return false;
       }
 
-      // Mettre à jour le deck dans le state local
-      const currentDecks = get().decks;
-      const updatedDecks = currentDecks.map((deck) =>
-        deck.id === deckId
-          ? { ...deck, name, cards, updated_at: new Date().toISOString() }
-          : deck
-      );
-
-      set({ decks: updatedDecks, loading: false, error: null });
+      set({ loading: false });
       return true;
     } catch (error) {
       console.error("Error updating deck:", error);
@@ -425,21 +401,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
     try {
       set({ loading: true, error: null });
 
-      const { error } = await getSupabase()
-        .from("decks")
-        .delete()
-        .eq("id", deckId);
+      const { error } = await supabase.from("decks").delete().eq("id", deckId);
 
       if (error) {
         set({ loading: false, error: error.message });
         return false;
       }
 
-      // Supprimer le deck du state local
-      const currentDecks = get().decks;
-      const updatedDecks = currentDecks.filter((deck) => deck.id !== deckId);
-
-      set({ decks: updatedDecks, loading: false, error: null });
+      set({ loading: false });
       return true;
     } catch (error) {
       console.error("Error deleting deck:", error);
@@ -454,27 +423,31 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
   },
 
-  // Définir un deck comme actif
+  // Définir le deck actif
   setActiveDeck: async (deckId: string) => {
     try {
       set({ loading: true, error: null });
 
-      const currentDecks = get().decks;
-      const userDeck = currentDecks.find((deck) => deck.id === deckId);
+      // Récupérer les informations du deck
+      const { data: userDeck, error: fetchError } = await supabase
+        .from("decks")
+        .select("*")
+        .eq("id", deckId)
+        .single();
 
-      if (!userDeck) {
-        set({ loading: false, error: "Deck non trouvé" });
+      if (fetchError || !userDeck) {
+        set({ loading: false, error: fetchError?.message });
         return false;
       }
 
       // Désactiver tous les decks de l'utilisateur
-      await getSupabase()
+      await supabase
         .from("decks")
         .update({ is_active: false })
         .eq("user_id", userDeck.user_id);
 
       // Activer le deck sélectionné
-      const { error } = await getSupabase()
+      const { error } = await supabase
         .from("decks")
         .update({ is_active: true })
         .eq("id", deckId);
@@ -484,13 +457,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         return false;
       }
 
-      // Mettre à jour le state local
-      const updatedDecks = currentDecks.map((deck) => ({
-        ...deck,
-        is_active: deck.id === deckId,
-      }));
-
-      set({ decks: updatedDecks, loading: false, error: null });
+      set({ loading: false });
       return true;
     } catch (error) {
       console.error("Error setting active deck:", error);
@@ -499,7 +466,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         error:
           error instanceof Error
             ? error.message
-            : "Erreur d'activation du deck",
+            : "Erreur de définition du deck actif",
       });
       return false;
     }
@@ -510,7 +477,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     try {
       set({ loading: true, error: null });
 
-      const { data, error } = await getSupabase().functions.invoke(
+      const { data, error } = await supabase.functions.invoke(
         "claim-daily-reward",
         {
           body: { userId },

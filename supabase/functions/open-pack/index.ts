@@ -13,12 +13,39 @@ serve(async (req) => {
   }
 
   try {
+    console.log("🔵 Headers reçus:", Object.fromEntries(req.headers.entries()));
+    console.log("🔵 Méthode:", req.method);
+
+    const rawBody = await req.text();
+    console.log("🔵 Corps brut de la requête:", rawBody);
+
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+      console.log("🔵 Corps parsé:", body);
+    } catch (error) {
+      console.error("❌ Erreur de parsing JSON:", error);
+      console.error("❌ Corps problématique:", rawBody);
+      return new Response(
+        JSON.stringify({
+          error: "Format de requête invalide",
+          details: "Le corps de la requête doit être un JSON valide",
+          rawBody: rawBody,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        }
+      );
+    }
+
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? ""
     );
 
-    const { userPackId } = await req.json();
+    const { userPackId } = body;
+    console.log("🔵 ID du pack à ouvrir:", userPackId);
 
     if (!userPackId) {
       return new Response(
@@ -34,10 +61,13 @@ serve(async (req) => {
 
     // Récupérer les informations du pack
     const { data: purchaseData, error: purchaseError } = await supabaseClient
-      .from("pack_purchases")
+      .from("user_packs")
       .select("*, pack:card_packs(*)")
       .eq("id", userPackId)
       .single();
+
+    console.log("🔵 Données du pack:", purchaseData);
+    console.log("❌ Erreur éventuelle:", purchaseError);
 
     if (purchaseError || !purchaseData) {
       return new Response(
@@ -88,7 +118,7 @@ serve(async (req) => {
 
     // Marquer le pack comme ouvert
     const { error: updateError } = await supabaseClient
-      .from("pack_purchases")
+      .from("user_packs")
       .update({ opened_at: new Date().toISOString() })
       .eq("id", userPackId);
 
@@ -106,6 +136,7 @@ serve(async (req) => {
       }
     );
   } catch (error) {
+    console.error("Erreur serveur:", error);
     return new Response(
       JSON.stringify({
         error: "Erreur interne du serveur",

@@ -21,6 +21,7 @@ import { Decks } from "./src/screens/Decks";
 import { Profile } from "./src/screens/Profile";
 import { CardDetails } from "./src/screens/CardDetails";
 import { DeckEdit } from "./src/screens/DeckEdit";
+import { PackOpening } from "./src/screens/PackOpening";
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 const ShopStack = createNativeStackNavigator<ShopStackParamList>();
@@ -47,6 +48,15 @@ const ShopStackScreen = () => (
         headerTintColor: "#fff",
       }}
     />
+    <ShopStack.Screen
+      name="PackOpening"
+      component={PackOpening}
+      options={{
+        headerShown: false,
+        presentation: "modal",
+        animation: "fade",
+      }}
+    />
   </ShopStack.Navigator>
 );
 
@@ -68,6 +78,15 @@ const CollectionStackScreen = () => (
         title: "Détails de la Carte",
         headerStyle: { backgroundColor: "#2ecc71" },
         headerTintColor: "#fff",
+      }}
+    />
+    <CollectionStack.Screen
+      name="PackOpening"
+      component={PackOpening}
+      options={{
+        headerShown: false,
+        presentation: "modal",
+        animation: "fade",
       }}
     />
   </CollectionStack.Navigator>

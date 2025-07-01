@@ -118,7 +118,7 @@ export const getUserCards = async (userId: string) => {
 export const getAvailablePacks = async () => {
   try {
     const { data, error } = await supabase
-      .from("packs")
+      .from("card_packs")
       .select("*")
       .order("price", { ascending: true });
 
@@ -132,15 +132,15 @@ export const getAvailablePacks = async () => {
 
 export const purchasePack = async (userId: string, packId: string) => {
   try {
-    const { data, error } = await supabase
-      .from("user_packs")
-      .insert([
-        {
-          user_id: userId,
-          pack_id: packId,
-        },
-      ])
-      .select();
+    const { data, error } = await supabase.from("user_packs").insert([
+      {
+        user_id: userId,
+        pack_id: packId,
+      },
+    ]).select(`
+        *,
+        pack:card_packs(*)
+      `);
 
     if (error) throw error;
     return { data, error: null };
@@ -154,6 +154,14 @@ export const openPack = async (userPackId: string) => {
   try {
     const { data, error } = await supabase.functions.invoke("open-pack", {
       body: { userPackId },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${
+          (
+            await supabase.auth.getSession()
+          ).data.session?.access_token
+        }`,
+      },
     });
 
     if (error) throw error;
@@ -184,15 +192,17 @@ export const claimDailyReward = async (userId: string) => {
 
 export const getUserBalance = async (userId: string) => {
   try {
-    const { data, error } = await supabase.rpc("get_user_balance", {
-      p_user_id: userId,
-    });
+    const { data, error } = await supabase
+      .from("user_balances")
+      .select("balance")
+      .eq("user_id", userId)
+      .single();
 
     if (error) throw error;
-    return { data, error: null };
+    return { data: data?.balance || 0, error: null };
   } catch (error) {
     console.error("Error getting user balance:", error);
-    return { data: null, error };
+    return { data: 0, error };
   }
 };
 
@@ -213,36 +223,48 @@ export const addCoins = async (userId: string, amount: number) => {
 
 export const buyPack = async (
   userId: string,
-  packId: string,
-  quantity: number = 1
-): Promise<{ data: BuyPackResponse | null; error: Error | null }> => {
+  packId: string
+): Promise<BuyPackResponse> => {
   try {
-    console.log("🔵 Service - Début de buyPack", { userId, packId, quantity });
+    console.log("🔵 Service - Début de buyPack", { userId, packId });
 
     const { data, error } = await supabase.rpc("buy_pack", {
       p_user_id: userId,
       p_pack_id: packId,
-      p_quantity: quantity,
     });
 
-    console.log("🔵 Service - Réponse brute de buy_pack:", { data, error });
+    console.log("🔵 Service - Réponse de buy_pack:", { data, error });
 
-    if (error) throw error;
+    if (error) {
+      console.error("🔴 Service - Erreur RPC:", error);
+      throw error;
+    }
 
-    const response: BuyPackResponse = {
-      success: data.success,
-      message: data.message,
-      purchase_id: data.purchase_id,
-      new_balance: data.new_balance,
-    };
+    if (!data || data.length === 0) {
+      console.error("🔴 Service - Pas de données reçues");
+      throw new Error("Aucune donnée reçue de buy_pack");
+    }
 
-    console.log("🟢 Service - Réponse formatée:", response);
-    return { data: response, error: null };
-  } catch (error) {
-    console.error("Error buying pack:", error);
+    const result = data[0];
+    if (!result.success) {
+      console.error("🔴 Service - Échec de l'achat:", result.message);
+      return {
+        success: false,
+        message: result.message || "Erreur lors de l'achat",
+        purchase_id: null,
+        new_balance: result.new_balance,
+      };
+    }
+
+    console.log("🟢 Service - Achat réussi:", result);
     return {
-      data: null,
-      error: error instanceof Error ? error : new Error("Unknown error"),
+      success: true,
+      message: "Achat réussi",
+      purchase_id: result.purchase_id,
+      new_balance: result.new_balance,
     };
+  } catch (error) {
+    console.error("🔴 Service - Erreur buyPack:", error);
+    throw error;
   }
 };

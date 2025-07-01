@@ -23,36 +23,66 @@ export const PackOpening = () => {
 
   const openPack = async () => {
     try {
-      setLoading(true);
-      setError(null);
+      console.log("🎁 Tentative d'ouverture du pack:", purchaseId);
 
-      const { data, error } = await supabase.functions.invoke("open-pack", {
-        body: { userPackId: purchaseId },
-      });
+      const { data: packData, error: packError } = await supabase
+        .from("user_packs")
+        .select(
+          `
+          *,
+          pack:card_packs(*)
+        `
+        )
+        .eq("id", purchaseId)
+        .single();
 
-      if (error) {
-        throw error;
+      console.log("🔍 ID du pack recherché:", purchaseId);
+      console.log("🔵 Données du pack:", packData);
+      console.log("❌ Erreur éventuelle:", packError);
+
+      if (packError || !packData) {
+        throw new Error("Pack non trouvé");
       }
 
-      if (!data.success || !data.cards) {
-        throw new Error("Erreur lors de l'ouverture du pack");
+      if (packData.opened_at) {
+        throw new Error("Ce pack a déjà été ouvert");
       }
 
-      setCards(data.cards);
-    } catch (err) {
-      console.error("Erreur lors de l'ouverture du pack:", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Erreur lors de l'ouverture du pack"
+      // Appel de la RPC pour ouvrir le pack
+      const { data: cards, error: openError } = await supabase.rpc(
+        "open_pack",
+        {
+          p_user_id: packData.user_id,
+          p_pack_id: packData.pack_id,
+        }
       );
+
+      console.log("🎴 Cartes obtenues:", cards);
+      console.log("❌ Erreur d'ouverture:", openError);
+
+      if (openError) throw openError;
+
+      // Mise à jour du statut du pack
+      const { error: updateError } = await supabase
+        .from("user_packs")
+        .update({ opened_at: new Date().toISOString() })
+        .eq("id", purchaseId);
+
+      console.log("✏️ Erreur de mise à jour:", updateError);
+
+      if (updateError) throw updateError;
+
+      setCards(cards);
+    } catch (error) {
+      console.log("❌ Erreur lors de l'ouverture du pack:", error);
+      setError(error instanceof Error ? error.message : String(error));
     } finally {
       setLoading(false);
     }
   };
 
   const handleAnimationComplete = () => {
-    navigation.navigate("Collection");
+    navigation.navigate("ShopMain");
   };
 
   if (loading) {

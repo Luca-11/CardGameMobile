@@ -154,3 +154,10 @@ export interface GameStoreState {
   loading: boolean;
   error: string | null;
 }
+
+export interface BuyPackResponse {
+  success: boolean;
+  message: string;
+  purchase_id: string | null;
+  new_balance: number;
+}

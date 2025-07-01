@@ -4,7 +4,7 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  TouchableWithoutFeedback,
+  Pressable,
   Image,
 } from "react-native";
 import { Card } from "../types/database";
@@ -30,6 +30,13 @@ const PackOpeningAnimation: React.FC<PackOpeningProps> = ({
         translateY: new Animated.Value(0),
       }))
   ).current;
+
+  useEffect(() => {
+    // Démarrer l'animation automatiquement après un court délai
+    setTimeout(() => {
+      handlePress();
+    }, 500);
+  }, []);
 
   const animateParticles = () => {
     const animations = particleAnimations.map((particle) => {
@@ -100,19 +107,40 @@ const PackOpeningAnimation: React.FC<PackOpeningProps> = ({
   };
 
   return (
-    <TouchableWithoutFeedback onPress={handlePress}>
+    <Pressable
+      style={styles.container}
+      onPress={handlePress}
+      accessible={true}
+      accessibilityRole="button"
+      accessibilityLabel="Terminer l'ouverture du pack"
+    >
       <View style={styles.container}>
-        {/* Pack fermé */}
+        {particleAnimations.map((_, index) => (
+          <Animated.View
+            key={`particle-${index}`}
+            style={[
+              styles.particle,
+              {
+                transform: [
+                  { scale: particleAnimations[index].scale },
+                  { translateX: particleAnimations[index].translateX },
+                  { translateY: particleAnimations[index].translateY },
+                ],
+              },
+            ]}
+          />
+        ))}
+
         <Animated.View
           style={[
             styles.pack,
             {
-              opacity: packAnimation,
               transform: [
+                { scale: packAnimation },
                 {
-                  scale: packAnimation.interpolate({
+                  translateY: packAnimation.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [0.5, 1],
+                    outputRange: [-200, 0],
                   }),
                 },
               ],
@@ -122,24 +150,6 @@ const PackOpeningAnimation: React.FC<PackOpeningProps> = ({
           <View style={styles.packImage} />
         </Animated.View>
 
-        {/* Particules */}
-        {particleAnimations.map((particle, index) => (
-          <Animated.View
-            key={`particle-${index}`}
-            style={[
-              styles.particle,
-              {
-                transform: [
-                  { scale: particle.scale },
-                  { translateX: particle.translateX },
-                  { translateY: particle.translateY },
-                ],
-              },
-            ]}
-          />
-        ))}
-
-        {/* Cartes */}
         {cards.map((card, index) => {
           const rotateZ = cardAnimations[index].interpolate({
             inputRange: [0, 1],
@@ -153,7 +163,7 @@ const PackOpeningAnimation: React.FC<PackOpeningProps> = ({
 
           return (
             <Animated.View
-              key={card.id}
+              key={`${card.id}-${index}`}
               style={[
                 styles.cardContainer,
                 {
@@ -182,7 +192,7 @@ const PackOpeningAnimation: React.FC<PackOpeningProps> = ({
           );
         })}
       </View>
-    </TouchableWithoutFeedback>
+    </Pressable>
   );
 };
 

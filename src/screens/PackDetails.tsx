@@ -8,7 +8,11 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
-import { useRoute, useNavigation } from "@react-navigation/native";
+import {
+  useRoute,
+  useNavigation,
+  CommonActions,
+} from "@react-navigation/native";
 import {
   PackDetailsRouteProp,
   PackDetailsNavigationProp,
@@ -40,81 +44,48 @@ export const PackDetails = () => {
       console.log("🔵 Début de l'achat");
       setPurchasing(true);
 
-      let userResponse;
-      try {
-        console.log("🔵 Récupération de l'utilisateur...");
-        userResponse = await supabase.auth.getUser();
-        console.log("🔵 Réponse auth:", userResponse);
-      } catch (authError) {
-        console.error("🔴 Erreur d'authentification:", authError);
-        Alert.alert(
-          "Erreur",
-          "Erreur lors de la vérification de l'authentification"
-        );
-        setPurchasing(false);
-        return;
+      console.log("🔵 Récupération de l'utilisateur...");
+      const { data: authData, error: authError } =
+        await supabase.auth.getUser();
+      console.log("🔵 Réponse auth:", { data: authData, error: authError });
+
+      if (authError) {
+        throw new Error("Erreur d'authentification");
       }
 
-      const {
-        data: { user },
-      } = userResponse;
-      console.log("🔵 Utilisateur récupéré:", user?.id);
+      if (!authData.user) {
+        throw new Error("Utilisateur non connecté");
+      }
 
-      if (!user) {
-        console.log("🔴 Erreur: Utilisateur non connecté");
+      console.log("🔵 Utilisateur récupéré:", authData.user.id);
+
+      if (typeof userBalance !== "number" || userBalance < pack.price) {
         Alert.alert(
-          "Erreur",
-          "Vous devez être connecté pour acheter des packs"
+          "Solde insuffisant",
+          "Vous n'avez pas assez d'argent pour acheter ce pack."
         );
-        setPurchasing(false);
         return;
       }
 
       console.log(
         "🔵 Appel de buyPack avec userId:",
-        user.id,
+        authData.user.id,
         "packId:",
         pack.id
       );
-      const result = await buyPack(user.id, pack.id);
-      console.log("🔵 Résultat de buyPack:", result);
+      const result = await buyPack(pack.id);
 
-      if (!result) {
-        console.log("🔴 Erreur: Résultat null de buyPack");
-        Alert.alert("Erreur", "Une erreur est survenue lors de l'achat");
-        setPurchasing(false);
-        return;
-      }
-
-      if (!result.success) {
-        console.log("🔴 Erreur: Achat échoué avec message:", result.message);
-        Alert.alert("Erreur", result.message);
-        setPurchasing(false);
-        return;
-      }
-
-      console.log("🟢 Achat réussi! Nouveau solde:", result.new_balance);
-      console.log(
-        "🔵 Tentative de navigation vers PackOpening avec purchaseId:",
-        result.purchase_id
-      );
-
-      try {
-        // Navigation simple et directe
+      if (result.success) {
         navigation.navigate("PackOpening", {
           purchaseId: result.purchase_id,
         });
-        console.log("✅ Navigation vers PackOpening");
-      } catch (navError) {
-        console.error("🔴 Erreur de navigation:", navError);
-        Alert.alert(
-          "Erreur de Navigation",
-          "Impossible d'accéder à l'écran d'ouverture du pack. Veuillez réessayer."
-        );
       }
     } catch (error) {
       console.error("🔴 Erreur lors de l'achat:", error);
-      Alert.alert("Erreur", "Une erreur est survenue lors de l'achat");
+      Alert.alert(
+        "Erreur",
+        error instanceof Error ? error.message : "Une erreur est survenue"
+      );
     } finally {
       console.log("🔵 Fin de l'achat - Réinitialisation du state purchasing");
       setPurchasing(false);
