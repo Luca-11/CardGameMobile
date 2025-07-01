@@ -1,184 +1,58 @@
 import React, { useEffect } from "react";
+import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { Ionicons } from "@expo/vector-icons";
+
+// Stores
 import { useAuthStore } from "./src/stores/authStore";
 
-// Types
-import {
-  RootTabParamList,
-  ShopStackParamList,
-  CollectionStackParamList,
-  DecksStackParamList,
-} from "./src/types/navigation";
+// Navigators
+import AuthStack from "./src/navigation/AuthStack";
+import MainStack from "./src/navigation/MainStack";
 
-// Screens
-import { Shop } from "./src/screens/Shop";
-import { PackDetails } from "./src/screens/PackDetails";
-import { Collection } from "./src/screens/Collection";
-import { Decks } from "./src/screens/Decks";
-import { Profile } from "./src/screens/Profile";
-import { CardDetails } from "./src/screens/CardDetails";
-import { DeckEdit } from "./src/screens/DeckEdit";
-import { PackOpening } from "./src/screens/PackOpening";
-
-const Tab = createBottomTabNavigator<RootTabParamList>();
-const ShopStack = createNativeStackNavigator<ShopStackParamList>();
-const CollectionStack = createNativeStackNavigator<CollectionStackParamList>();
-const DecksStack = createNativeStackNavigator<DecksStackParamList>();
-
-const ShopStackScreen = () => (
-  <ShopStack.Navigator>
-    <ShopStack.Screen
-      name="ShopMain"
-      component={Shop}
-      options={{
-        title: "Boutique",
-        headerStyle: { backgroundColor: "#2ecc71" },
-        headerTintColor: "#fff",
-      }}
-    />
-    <ShopStack.Screen
-      name="PackDetails"
-      component={PackDetails}
-      options={{
-        title: "Détails du Pack",
-        headerStyle: { backgroundColor: "#2ecc71" },
-        headerTintColor: "#fff",
-      }}
-    />
-    <ShopStack.Screen
-      name="PackOpening"
-      component={PackOpening}
-      options={{
-        headerShown: false,
-        presentation: "modal",
-        animation: "fade",
-      }}
-    />
-  </ShopStack.Navigator>
-);
-
-const CollectionStackScreen = () => (
-  <CollectionStack.Navigator>
-    <CollectionStack.Screen
-      name="CollectionMain"
-      component={Collection}
-      options={{
-        title: "Ma Collection",
-        headerStyle: { backgroundColor: "#2ecc71" },
-        headerTintColor: "#fff",
-      }}
-    />
-    <CollectionStack.Screen
-      name="CardDetails"
-      component={CardDetails}
-      options={{
-        title: "Détails de la Carte",
-        headerStyle: { backgroundColor: "#2ecc71" },
-        headerTintColor: "#fff",
-      }}
-    />
-    <CollectionStack.Screen
-      name="PackOpening"
-      component={PackOpening}
-      options={{
-        headerShown: false,
-        presentation: "modal",
-        animation: "fade",
-      }}
-    />
-  </CollectionStack.Navigator>
-);
-
-const DecksStackScreen = () => (
-  <DecksStack.Navigator>
-    <DecksStack.Screen
-      name="DecksList"
-      component={Decks}
-      options={{
-        title: "Mes Decks",
-        headerStyle: { backgroundColor: "#2ecc71" },
-        headerTintColor: "#fff",
-      }}
-    />
-    <DecksStack.Screen
-      name="DeckEdit"
-      component={DeckEdit}
-      options={{
-        title: "Éditer le Deck",
-        headerStyle: { backgroundColor: "#2ecc71" },
-        headerTintColor: "#fff",
-      }}
-    />
-  </DecksStack.Navigator>
-);
+const RootStack = createNativeStackNavigator();
 
 export default function App() {
-  const { initialize } = useAuthStore();
+  const { user, loading, initialized, initialize } = useAuthStore();
 
+  // Initialiser l'authentification au démarrage
   useEffect(() => {
+    console.log("🔵 App - Initialisation de l'authentification");
     initialize();
-  }, []);
+  }, [initialize]);
+
+  // Affichage de chargement pendant l'initialisation
+  if (!initialized || loading) {
+    console.log("⏳ App - Chargement...", { initialized, loading });
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2ecc71" />
+      </View>
+    );
+  }
+
+  console.log("🔵 App - État final:", { hasUser: !!user, userId: user?.id });
 
   return (
     <NavigationContainer>
-      <Tab.Navigator
-        screenOptions={({ route }) => ({
-          tabBarIcon: ({ focused, color, size }) => {
-            let iconName;
-
-            switch (route.name) {
-              case "Shop":
-                iconName = focused ? "cart" : "cart-outline";
-                break;
-              case "Collection":
-                iconName = focused ? "albums" : "albums-outline";
-                break;
-              case "Decks":
-                iconName = focused ? "layers" : "layers-outline";
-                break;
-              case "Profile":
-                iconName = focused ? "person" : "person-outline";
-                break;
-              default:
-                iconName = "help-outline";
-            }
-
-            return (
-              <Ionicons name={iconName as any} size={size} color={color} />
-            );
-          },
-          tabBarActiveTintColor: "#2ecc71",
-          tabBarInactiveTintColor: "gray",
-        })}
-      >
-        <Tab.Screen
-          name="Shop"
-          component={ShopStackScreen}
-          options={{ headerShown: false, title: "Boutique" }}
-        />
-        <Tab.Screen
-          name="Collection"
-          component={CollectionStackScreen}
-          options={{ headerShown: false, title: "Collection" }}
-        />
-        <Tab.Screen
-          name="Decks"
-          component={DecksStackScreen}
-          options={{ headerShown: false, title: "Decks" }}
-        />
-        <Tab.Screen
-          name="Profile"
-          component={Profile}
-          options={{
-            title: "Profil",
-            headerStyle: { backgroundColor: "#2ecc71" },
-            headerTintColor: "#fff",
-          }}
-        />
-      </Tab.Navigator>
+      <RootStack.Navigator screenOptions={{ headerShown: false }}>
+        {user ? (
+          // Utilisateur connecté → Application principale
+          <RootStack.Screen name="Main" component={MainStack} />
+        ) : (
+          // Utilisateur non connecté → Authentification
+          <RootStack.Screen name="Auth" component={AuthStack} />
+        )}
+      </RootStack.Navigator>
     </NavigationContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f5f5f5",
+  },
+});

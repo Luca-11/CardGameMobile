@@ -135,14 +135,15 @@ export const PackDetails = () => {
 
       <View style={styles.probabilityContainer}>
         <Text style={styles.probabilityTitle}>Probabilités par rareté:</Text>
-        {Object.entries(pack.rarity_weights).map(([rarity, weight]) => (
-          <View key={rarity} style={styles.probabilityRow}>
-            <Text style={styles.rarityLabel}>{rarity}</Text>
-            <Text style={styles.probabilityValue}>
-              {(weight * 100).toFixed(1)}%
-            </Text>
-          </View>
-        ))}
+        {pack.rarity_weights &&
+          Object.entries(pack.rarity_weights).map(([rarity, weight]) => (
+            <View key={rarity} style={styles.probabilityRow}>
+              <Text style={styles.rarityLabel}>{rarity}</Text>
+              <Text style={styles.probabilityValue}>
+                {(weight * 100).toFixed(1)}%
+              </Text>
+            </View>
+          ))}
       </View>
 
       <TouchableOpacity

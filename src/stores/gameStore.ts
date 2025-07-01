@@ -161,7 +161,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         .select(
           `
           *,
-          pack:card_packs(*)
+          pack:packs(*)
         `
         )
         .eq("user_id", userId)

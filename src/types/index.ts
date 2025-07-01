@@ -7,7 +7,6 @@ export interface User {
   email: string;
   username: string;
   avatar_url?: string;
-  role: "user" | "admin";
   coins: number;
   created_at: string;
   updated_at: string;

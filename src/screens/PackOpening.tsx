@@ -24,13 +24,26 @@ export const PackOpening = () => {
   const openPack = async () => {
     try {
       console.log("🎁 Tentative d'ouverture du pack:", purchaseId);
+      console.log("🔍 Vérification de l'authentification...");
+
+      // Vérifier l'authentification
+      const {
+        data: { session },
+        error: authError,
+      } = await supabase.auth.getSession();
+      console.log("🔐 Session utilisateur:", session?.user?.id);
+      console.log("❌ Erreur d'authentification:", authError);
+
+      if (!session) {
+        throw new Error("Utilisateur non authentifié");
+      }
 
       const { data: packData, error: packError } = await supabase
         .from("user_packs")
         .select(
           `
           *,
-          pack:card_packs(*)
+          pack:packs(*)
         `
         )
         .eq("id", purchaseId)
@@ -41,14 +54,22 @@ export const PackOpening = () => {
       console.log("❌ Erreur éventuelle:", packError);
 
       if (packError || !packData) {
+        console.error("❌ Pack non trouvé ou erreur:", packError);
         throw new Error("Pack non trouvé");
       }
 
       if (packData.opened_at) {
+        console.log("❌ Pack déjà ouvert à:", packData.opened_at);
         throw new Error("Ce pack a déjà été ouvert");
       }
 
+      console.log("🔍 Paramètres pour open_pack:");
+      console.log("  - user_id:", packData.user_id);
+      console.log("  - pack_id:", packData.pack_id);
+      console.log("  - pack_data:", packData.pack);
+
       // Appel de la RPC pour ouvrir le pack
+      console.log("🔍 Appel de la fonction RPC open_pack...");
       const { data: cards, error: openError } = await supabase.rpc(
         "open_pack",
         {
@@ -60,9 +81,18 @@ export const PackOpening = () => {
       console.log("🎴 Cartes obtenues:", cards);
       console.log("❌ Erreur d'ouverture:", openError);
 
-      if (openError) throw openError;
+      if (openError) {
+        console.error("❌ Erreur détaillée lors de l'ouverture:", {
+          message: openError.message,
+          code: openError.code,
+          details: openError.details,
+          hint: openError.hint,
+        });
+        throw openError;
+      }
 
       // Mise à jour du statut du pack
+      console.log("🔍 Marquage du pack comme ouvert...");
       const { error: updateError } = await supabase
         .from("user_packs")
         .update({ opened_at: new Date().toISOString() })
@@ -70,11 +100,25 @@ export const PackOpening = () => {
 
       console.log("✏️ Erreur de mise à jour:", updateError);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error("❌ Erreur lors de la mise à jour du pack:", updateError);
+        throw updateError;
+      }
 
-      setCards(cards);
+      console.log("✅ Pack marqué comme ouvert avec succès");
+      console.log(
+        "✅ Ouverture du pack réussie, cartes obtenues:",
+        cards?.length || 0
+      );
+
+      setCards(cards || []);
     } catch (error) {
       console.log("❌ Erreur lors de l'ouverture du pack:", error);
+      console.error("❌ Détails de l'erreur:", {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        error: error,
+      });
       setError(error instanceof Error ? error.message : String(error));
     } finally {
       setLoading(false);
@@ -82,6 +126,7 @@ export const PackOpening = () => {
   };
 
   const handleAnimationComplete = () => {
+    console.log("🎬 Animation d'ouverture terminée, navigation vers ShopMain");
     navigation.navigate("ShopMain");
   };
 
@@ -89,6 +134,7 @@ export const PackOpening = () => {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#2ecc71" />
+        <Text style={styles.loadingText}>Ouverture du pack...</Text>
       </View>
     );
   }
@@ -96,7 +142,8 @@ export const PackOpening = () => {
   if (error) {
     return (
       <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>{error}</Text>
+        <Text style={styles.errorText}>Erreur lors de l'ouverture du pack</Text>
+        <Text style={styles.errorDetails}>{error}</Text>
       </View>
     );
   }
@@ -122,6 +169,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#000",
   },
+  loadingText: {
+    color: "#fff",
+    fontSize: 16,
+    marginTop: 16,
+  },
   errorContainer: {
     flex: 1,
     justifyContent: "center",
@@ -133,5 +185,12 @@ const styles = StyleSheet.create({
     color: "#e74c3c",
     fontSize: 18,
     textAlign: "center",
+    marginBottom: 16,
+  },
+  errorDetails: {
+    color: "#e74c3c",
+    fontSize: 14,
+    textAlign: "center",
+    opacity: 0.8,
   },
 });

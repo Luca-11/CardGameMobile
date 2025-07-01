@@ -139,7 +139,7 @@ export const purchasePack = async (userId: string, packId: string) => {
       },
     ]).select(`
         *,
-        pack:card_packs(*)
+        pack:packs(*)
       `);
 
     if (error) throw error;

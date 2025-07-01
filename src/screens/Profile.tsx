@@ -19,7 +19,7 @@ import { getErrorMessage } from "../constants/errorMessages";
 import { useGameStore } from "../stores/gameStore";
 import { addCoins } from "../services/supabase";
 import { useNavigation } from "@react-navigation/native";
-import { RootStackParamList, ScreenNames } from "../types";
+import { RootStackParamList } from "../types";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 type ProfileScreenNavigationProp =
@@ -32,6 +32,7 @@ export const Profile = () => {
     loading: authLoading,
     initialized,
     initialize,
+    logout,
   } = useAuthStore();
   console.log("🔵 Profile - État de l'authentification:", {
     user,
@@ -60,6 +61,16 @@ export const Profile = () => {
     };
     initAuth();
   }, [initialized, initialize]);
+
+  // Surveiller les changements d'état d'authentification
+  useEffect(() => {
+    console.log("🔵 Profile - Changement d'état user:", {
+      hasUser: !!user,
+      userId: user?.id,
+      initialized,
+      authLoading,
+    });
+  }, [user, initialized, authLoading]);
 
   useEffect(() => {
     console.log("🔵 Profile - useEffect déclenché avec user:", user);
@@ -353,8 +364,9 @@ export const Profile = () => {
         </Text>
         <TouchableOpacity
           style={styles.loginButton}
-          onPress={() => {
-            navigation.navigate(ScreenNames.AUTH);
+          onPress={async () => {
+            // Rediriger vers l'authentification en déconnectant l'utilisateur
+            await logout();
           }}
         >
           <Text style={styles.loginButtonText}>Se connecter</Text>

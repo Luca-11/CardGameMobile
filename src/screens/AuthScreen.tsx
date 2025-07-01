@@ -4,347 +4,356 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  StyleSheet,
   Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  ActivityIndicator,
-  Keyboard,
-  TouchableWithoutFeedback,
-  StyleSheet,
+  SafeAreaView,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { ResetPasswordForm } from "../components/auth/ResetPasswordForm";
-import { getErrorMessage } from "../constants/errorMessages";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Stores
 import { useAuthStore } from "../stores/authStore";
 
 const AuthScreen = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const [showResetPassword, setShowResetPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [username, setUsername] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const { login, register, loading, error, clearError } = useAuthStore();
+  const { login, register, error, clearError } = useAuthStore();
 
   const handleSubmit = async () => {
-    clearError();
-    if (Platform.OS !== "web") {
-      Keyboard.dismiss();
-    }
-
-    // Validation basique
     if (!email || !password) {
-      Alert.alert("Erreur", getErrorMessage("Email required"));
+      Alert.alert("Erreur", "Veuillez remplir tous les champs");
       return;
     }
 
-    if (!isLogin) {
-      if (!username) {
-        Alert.alert("Erreur", getErrorMessage("Username required"));
-        return;
-      }
-      if (password !== confirmPassword) {
-        Alert.alert("Erreur", getErrorMessage("Passwords do not match"));
-        return;
-      }
-      if (password.length < 6) {
-        Alert.alert("Erreur", getErrorMessage("Password is too short"));
-        return;
-      }
+    if (!isLogin && password !== confirmPassword) {
+      Alert.alert("Erreur", "Les mots de passe ne correspondent pas");
+      return;
     }
 
+    console.log(`🔵 AuthScreen - ${isLogin ? "Connexion" : "Inscription"}:`, {
+      email,
+    });
+    setLoading(true);
+
     try {
+      let success = false;
       if (isLogin) {
-        const success = await login(email, password);
-        if (success && rememberMe) {
-          await AsyncStorage.setItem("rememberedEmail", email);
-        }
-        if (!success) {
-          Alert.alert("Erreur", getErrorMessage(error));
-        }
+        success = await login(email, password);
       } else {
-        const success = await register(email, password, username);
-        if (success) {
-          Alert.alert(
-            "Inscription réussie",
-            "Vérifiez votre email pour confirmer votre compte",
-            [{ text: "OK", onPress: () => setIsLogin(true) }]
-          );
-        } else {
-          Alert.alert("Erreur", getErrorMessage(error));
-        }
+        success = await register(email, password, email.split("@")[0]);
       }
-    } catch (err) {
-      Alert.alert("Erreur", getErrorMessage(err));
+
+      if (!success) {
+        // Afficher l'erreur du store
+        if (error) {
+          Alert.alert("Erreur d'authentification", error);
+        }
+        return;
+      }
+
+      if (!isLogin) {
+        Alert.alert(
+          "Inscription réussie !",
+          "Votre compte a été créé avec succès. Vous pouvez maintenant vous connecter.",
+          [{ text: "OK" }]
+        );
+      }
+    } catch (error: any) {
+      console.error("❌ Erreur d'authentification:", error);
+      Alert.alert("Erreur", error.message || "Une erreur est survenue");
+    } finally {
+      setLoading(false);
     }
   };
 
   const resetForm = () => {
     setEmail("");
     setPassword("");
-    setUsername("");
     setConfirmPassword("");
-    clearError();
+    setShowPassword(false);
   };
 
   const toggleMode = () => {
     setIsLogin(!isLogin);
     resetForm();
+    clearError(); // Nettoyer les erreurs lors du changement de mode
   };
 
-  // Charger l'email mémorisé au démarrage
-  React.useEffect(() => {
-    const loadRememberedEmail = async () => {
-      try {
-        const savedEmail = await AsyncStorage.getItem("rememberedEmail");
-        if (savedEmail) {
-          setEmail(savedEmail);
-          setRememberMe(true);
-        }
-      } catch (error) {
-        console.error("Erreur lors du chargement de l'email:", error);
-      }
-    };
-    loadRememberedEmail();
-  }, []);
+  const createTestAccount = async () => {
+    const testEmail = `test${Math.floor(Math.random() * 10000)}@cardgame.com`;
+    const testPassword = "password123";
 
-  const Container = Platform.OS === "web" ? View : TouchableWithoutFeedback;
-  const containerProps =
-    Platform.OS === "web"
-      ? {
-          style: styles.container,
-        }
-      : {
-          style: styles.container,
-          onPress: Keyboard.dismiss,
-        };
+    Alert.alert(
+      "Compte de test",
+      `Email: ${testEmail}\nMot de passe: ${testPassword}\n\nCe compte sera créé automatiquement.`,
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Créer",
+          onPress: async () => {
+            setEmail(testEmail);
+            setPassword(testPassword);
+            setIsLogin(false);
 
-  if (showResetPassword) {
-    return (
-      <Container {...containerProps}>
-        <LinearGradient
-          colors={["#4f46e5", "#3b82f6"]}
-          style={styles.container}
-        >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.container}
-          >
-            <ScrollView
-              contentContainerStyle={styles.scrollContent}
-              keyboardShouldPersistTaps="handled"
-            >
-              <ResetPasswordForm onBack={() => setShowResetPassword(false)} />
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </LinearGradient>
-      </Container>
+            // Essayer l'inscription avec ce compte de test
+            const success = await register(
+              testEmail,
+              testPassword,
+              `user${Math.floor(Math.random() * 1000)}`
+            );
+            if (success) {
+              Alert.alert(
+                "Succès",
+                "Compte de test créé ! Vous pouvez maintenant vous connecter."
+              );
+              setIsLogin(true);
+            }
+          },
+        },
+      ]
     );
-  }
+  };
 
   return (
-    <Container {...containerProps}>
-      <LinearGradient colors={["#4f46e5", "#3b82f6"]} style={styles.container}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.container}
-        >
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.formContainer}>
-              <Text style={styles.title}>
-                {isLogin ? "Connexion" : "Inscription"}
-              </Text>
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.keyboardView}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.header}>
+            <Ionicons name="game-controller" size={80} color="#2ecc71" />
+            <Text style={styles.title}>Card Game Mobile</Text>
+            <Text style={styles.subtitle}>
+              {isLogin ? "Connectez-vous à votre compte" : "Créez votre compte"}
+            </Text>
+          </View>
 
-              {!isLogin && (
-                <TextInput
-                  style={styles.input}
-                  placeholder="Nom d'utilisateur"
-                  value={username}
-                  onChangeText={setUsername}
-                  autoCapitalize="none"
-                  editable={!loading}
-                />
-              )}
-
+          <View style={styles.form}>
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="mail"
+                size={20}
+                color="#666"
+                style={styles.inputIcon}
+              />
               <TextInput
                 style={styles.input}
                 placeholder="Email"
                 value={email}
                 onChangeText={setEmail}
-                autoCapitalize="none"
                 keyboardType="email-address"
-                editable={!loading}
+                autoCapitalize="none"
+                autoComplete="email"
               />
+            </View>
 
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="lock-closed"
+                size={20}
+                color="#666"
+                style={styles.inputIcon}
+              />
               <TextInput
-                style={styles.input}
+                style={[styles.input, styles.passwordInput]}
                 placeholder="Mot de passe"
                 value={password}
                 onChangeText={setPassword}
-                secureTextEntry
-                editable={!loading}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
               />
-
-              {!isLogin && (
-                <TextInput
-                  style={styles.input}
-                  placeholder="Confirmer le mot de passe"
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  secureTextEntry
-                  editable={!loading}
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                style={styles.eyeIcon}
+              >
+                <Ionicons
+                  name={showPassword ? "eye" : "eye-off"}
+                  size={20}
+                  color="#666"
                 />
-              )}
-
-              {isLogin && (
-                <TouchableOpacity
-                  style={styles.rememberMeContainer}
-                  onPress={() => setRememberMe(!rememberMe)}
-                >
-                  <Ionicons
-                    name={rememberMe ? "checkbox" : "square-outline"}
-                    size={24}
-                    color="#3b82f6"
-                  />
-                  <Text style={styles.rememberMeText}>Se souvenir de moi</Text>
-                </TouchableOpacity>
-              )}
-
-              <TouchableOpacity
-                style={[styles.button, loading && styles.buttonDisabled]}
-                onPress={handleSubmit}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#ffffff" />
-                ) : (
-                  <Text style={styles.buttonText}>
-                    {isLogin ? "Se connecter" : "S'inscrire"}
-                  </Text>
-                )}
-              </TouchableOpacity>
-
-              {isLogin && (
-                <TouchableOpacity
-                  style={styles.forgotPassword}
-                  onPress={() => setShowResetPassword(true)}
-                >
-                  <Text style={styles.forgotPasswordText}>
-                    Mot de passe oublié ?
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              <TouchableOpacity
-                style={styles.toggleButton}
-                onPress={toggleMode}
-              >
-                <Text style={styles.toggleButtonText}>
-                  {isLogin
-                    ? "Pas encore de compte ? S'inscrire"
-                    : "Déjà un compte ? Se connecter"}
-                </Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </LinearGradient>
-    </Container>
+
+            {!isLogin && (
+              <>
+                <View style={styles.inputContainer}>
+                  <Ionicons
+                    name="lock-closed"
+                    size={20}
+                    color="#666"
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Confirmer le mot de passe"
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                  />
+                </View>
+              </>
+            )}
+
+            <TouchableOpacity
+              style={[
+                styles.submitButton,
+                loading && styles.submitButtonDisabled,
+              ]}
+              onPress={handleSubmit}
+              disabled={loading}
+            >
+              <Text style={styles.submitButtonText}>
+                {loading ? "..." : isLogin ? "Se connecter" : "S'inscrire"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={toggleMode} style={styles.toggleButton}>
+              <Text style={styles.toggleButtonText}>
+                {isLogin
+                  ? "Pas de compte ? Créer un compte"
+                  : "Déjà un compte ? Se connecter"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Bouton temporaire pour contourner le problème d'inscription */}
+            <TouchableOpacity
+              onPress={createTestAccount}
+              style={styles.testButton}
+            >
+              <Text style={styles.testButtonText}>
+                🧪 Créer un compte de test (contournement)
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "#f8f9fa",
+  },
+  keyboardView: {
+    flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
-    padding: 20,
+    paddingHorizontal: 24,
   },
-  formContainer: {
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    borderRadius: 20,
-    padding: Platform.OS === "ios" ? 30 : 25,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 10,
-    width: "100%",
-    maxWidth: Platform.OS === "web" ? 400 : undefined,
-    alignSelf: "center",
+  header: {
+    alignItems: "center",
+    marginBottom: 40,
   },
   title: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#1f2937",
-    marginBottom: 24,
+    color: "#2c3e50",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: "#7f8c8d",
     textAlign: "center",
   },
-  input: {
-    backgroundColor: "#f9fafb",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 10,
-    padding: Platform.OS === "ios" ? 15 : 12,
-    fontSize: 16,
-    color: "#1f2937",
-    marginBottom: 12,
+  form: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  button: {
-    backgroundColor: "#3b82f6",
-    borderRadius: 10,
-    padding: Platform.OS === "ios" ? 16 : 14,
+  inputContainer: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    marginTop: 10,
+    backgroundColor: "#f8f9fa",
+    borderRadius: 8,
+    marginBottom: 16,
+    paddingHorizontal: 12,
+    minHeight: 48,
   },
-  buttonDisabled: {
-    opacity: 0.7,
+  inputIcon: {
+    marginRight: 12,
   },
-  buttonText: {
-    color: "#ffffff",
+  input: {
+    flex: 1,
+    fontSize: 16,
+    color: "#2c3e50",
+  },
+  passwordInput: {
+    paddingRight: 40,
+  },
+  eyeIcon: {
+    position: "absolute",
+    right: 12,
+    padding: 4,
+  },
+  submitButton: {
+    backgroundColor: "#2ecc71",
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  submitButtonDisabled: {
+    backgroundColor: "#95a5a6",
+  },
+  submitButtonText: {
+    color: "#fff",
     fontSize: 16,
     fontWeight: "600",
   },
   toggleButton: {
-    marginTop: 20,
     alignItems: "center",
+    paddingVertical: 8,
   },
   toggleButtonText: {
-    color: "#3b82f6",
+    color: "#2ecc71",
     fontSize: 14,
     fontWeight: "500",
   },
-  rememberMeContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 15,
-  },
-  rememberMeText: {
-    marginLeft: 8,
-    color: "#4b5563",
+  warningText: {
+    backgroundColor: "#fff3cd",
+    color: "#856404",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
     fontSize: 14,
+    textAlign: "center",
+    borderWidth: 1,
+    borderColor: "#ffeaa7",
   },
-  forgotPassword: {
-    marginTop: 15,
+  testButton: {
+    backgroundColor: "#2ecc71",
+    borderRadius: 8,
+    paddingVertical: 14,
     alignItems: "center",
+    marginTop: 8,
+    marginBottom: 16,
   },
-  forgotPasswordText: {
-    color: "#3b82f6",
-    fontSize: 14,
-    fontWeight: "500",
+  testButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
 
