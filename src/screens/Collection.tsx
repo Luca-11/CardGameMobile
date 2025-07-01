@@ -1,179 +1,365 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
-  TextInput,
   TouchableOpacity,
+  ActivityIndicator,
+  TextInput,
+  ScrollView,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { supabase } from "../lib/supabase";
-import { Card, UserCard } from "../types/database";
-import { CardItem } from "../components/CardItem";
-import { CollectionNavigationProp } from "../types/navigation";
-import { Ionicons } from "@expo/vector-icons";
+import { collectionService } from "../services/collection";
+import {
+  UserCard,
+  CollectionStats,
+  CollectionFilters,
+} from "../types/collection";
+import { useAuthStore } from "../stores/authStore";
+import { CollectionCard } from "../components/CollectionCard";
 
 export const Collection = () => {
-  const [userCards, setUserCards] = useState<(UserCard & { card: Card })[]>([]);
+  const navigation = useNavigation();
+  const { user } = useAuthStore();
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedElement, setSelectedElement] = useState<string | null>(null);
-  const [selectedRarity, setSelectedRarity] = useState<string | null>(null);
-  const navigation = useNavigation<CollectionNavigationProp>();
+  const [cards, setCards] = useState<UserCard[]>([]);
+  const [stats, setStats] = useState<CollectionStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<CollectionFilters>({});
+  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
-    fetchUserCards();
-  }, []);
+    if (user) {
+      loadCollection();
+    }
+  }, [user, filters]);
 
-  const fetchUserCards = async () => {
+  const loadCollection = async () => {
+    if (!user) return;
+
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      setLoading(true);
+      setError(null);
 
-      const { data, error } = await supabase
-        .from("user_cards")
-        .select("*, card:cards(*)")
-        .eq("user_id", user.id);
+      const currentFilters = { ...filters };
+      if (searchText) {
+        currentFilters.search = searchText;
+      }
 
-      if (error) throw error;
-      setUserCards(data as (UserCard & { card: Card })[]);
-    } catch (error) {
-      console.error("Erreur lors du chargement des cartes:", error);
+      const response = await collectionService.getUserCollection(
+        user.id,
+        currentFilters
+      );
+      setCards(response.cards);
+      setStats(response.stats);
+    } catch (err) {
+      console.error("❌ Erreur lors du chargement de la collection:", err);
+      setError("Erreur lors du chargement de la collection");
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredCards = userCards.filter((userCard) => {
-    const card = userCard.card;
-    const matchesSearch =
-      card.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      card.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesElement = !selectedElement || card.element === selectedElement;
-    const matchesRarity = !selectedRarity || card.rarity === selectedRarity;
-    return matchesSearch && matchesElement && matchesRarity;
-  });
-
-  const elements = [
-    "fire",
-    "water",
-    "earth",
-    "air",
-    "light",
-    "dark",
-    "neutral",
-  ];
-  const rarities = ["common", "uncommon", "rare", "epic", "legendary"];
-
-  const elementColors = {
-    fire: "#ff4d4d",
-    water: "#4d4dff",
-    earth: "#8b4513",
-    air: "#87ceeb",
-    light: "#ffff00",
-    dark: "#800080",
-    neutral: "#808080",
+  const handleSearch = (text: string) => {
+    setSearchText(text);
+    setFilters((prev) => ({ ...prev, search: text }));
   };
 
-  const renderFilterChip = (
-    label: string,
-    isSelected: boolean,
-    onPress: () => void,
-    color?: string
-  ) => (
-    <TouchableOpacity
-      style={[
-        styles.filterChip,
-        isSelected && { backgroundColor: color || "#2ecc71" },
-      ]}
-      onPress={onPress}
-    >
-      <Text style={[styles.filterChipText, isSelected && { color: "white" }]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
+  const handleFilterChange = (
+    key: keyof CollectionFilters,
+    value: string | undefined
+  ) => {
+    setFilters((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const handleSort = (sortBy: CollectionFilters["sort_by"]) => {
+    setFilters((prev) => ({
+      ...prev,
+      sort_by: sortBy,
+      sort_order:
+        prev.sort_by === sortBy && prev.sort_order === "asc" ? "desc" : "asc",
+    }));
+  };
+
+  const getRarityColor = (rarity: string) => {
+    const colors = {
+      common: { color: "#95a5a6" },
+      uncommon: { color: "#27ae60" },
+      rare: { color: "#3498db" },
+      epic: { color: "#9b59b6" },
+      legendary: { color: "#f39c12" },
+    };
+    return colors[rarity as keyof typeof colors] || { color: "#95a5a6" };
+  };
+
+  const renderCard = ({ item }: { item: UserCard }) => (
+    <View style={styles.cardContainer}>
+      <CollectionCard card={item} />
+    </View>
+  );
+
+  const renderStats = () => {
+    if (!stats) return null;
+
+    return (
+      <View style={styles.statsContainer}>
+        <Text style={styles.statsTitle}>📊 Statistiques de la collection</Text>
+
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{stats.total_cards}</Text>
+            <Text style={styles.statLabel}>Total</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{stats.unique_cards}</Text>
+            <Text style={styles.statLabel}>Uniques</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>
+              {stats.completion_percentage}%
+            </Text>
+            <Text style={styles.statLabel}>Complétion</Text>
+          </View>
+        </View>
+
+        <Text style={styles.statsSubtitle}>Par rareté:</Text>
+        <View style={styles.rarityStats}>
+          {Object.entries(stats.by_rarity).map(([rarity, count]) => (
+            <View key={rarity} style={styles.rarityItem}>
+              <Text style={[styles.rarityText, getRarityColor(rarity)]}>
+                {rarity.charAt(0).toUpperCase() + rarity.slice(1)}
+              </Text>
+              <Text style={styles.rarityCount}>{count}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const renderFilters = () => (
+    <View style={styles.filtersContainer}>
+      <TextInput
+        style={styles.searchInput}
+        placeholder="🔍 Rechercher une carte..."
+        value={searchText}
+        onChangeText={handleSearch}
+        placeholderTextColor="#666"
+      />
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterRow}
+      >
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            filters.rarity === "common" && styles.filterButtonActive,
+          ]}
+          onPress={() =>
+            handleFilterChange(
+              "rarity",
+              filters.rarity === "common" ? undefined : "common"
+            )
+          }
+        >
+          <Text style={styles.filterButtonText}>Common</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            filters.rarity === "uncommon" && styles.filterButtonActive,
+          ]}
+          onPress={() =>
+            handleFilterChange(
+              "rarity",
+              filters.rarity === "uncommon" ? undefined : "uncommon"
+            )
+          }
+        >
+          <Text style={styles.filterButtonText}>Uncommon</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            filters.rarity === "rare" && styles.filterButtonActive,
+          ]}
+          onPress={() =>
+            handleFilterChange(
+              "rarity",
+              filters.rarity === "rare" ? undefined : "rare"
+            )
+          }
+        >
+          <Text style={styles.filterButtonText}>Rare</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            filters.rarity === "epic" && styles.filterButtonActive,
+          ]}
+          onPress={() =>
+            handleFilterChange(
+              "rarity",
+              filters.rarity === "epic" ? undefined : "epic"
+            )
+          }
+        >
+          <Text style={styles.filterButtonText}>Epic</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            filters.rarity === "legendary" && styles.filterButtonActive,
+          ]}
+          onPress={() =>
+            handleFilterChange(
+              "rarity",
+              filters.rarity === "legendary" ? undefined : "legendary"
+            )
+          }
+        >
+          <Text style={styles.filterButtonText}>Legendary</Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterRow}
+      >
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            filters.element === "fire" && styles.filterButtonActive,
+          ]}
+          onPress={() =>
+            handleFilterChange(
+              "element",
+              filters.element === "fire" ? undefined : "fire"
+            )
+          }
+        >
+          <Text style={styles.filterButtonText}>🔥 Feu</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            filters.element === "water" && styles.filterButtonActive,
+          ]}
+          onPress={() =>
+            handleFilterChange(
+              "element",
+              filters.element === "water" ? undefined : "water"
+            )
+          }
+        >
+          <Text style={styles.filterButtonText}>💧 Eau</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            filters.element === "earth" && styles.filterButtonActive,
+          ]}
+          onPress={() =>
+            handleFilterChange(
+              "element",
+              filters.element === "earth" ? undefined : "earth"
+            )
+          }
+        >
+          <Text style={styles.filterButtonText}>🌍 Terre</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            filters.element === "air" && styles.filterButtonActive,
+          ]}
+          onPress={() =>
+            handleFilterChange(
+              "element",
+              filters.element === "air" ? undefined : "air"
+            )
+          }
+        >
+          <Text style={styles.filterButtonText}>💨 Air</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            filters.element === "neutral" && styles.filterButtonActive,
+          ]}
+          onPress={() =>
+            handleFilterChange(
+              "element",
+              filters.element === "neutral" ? undefined : "neutral"
+            )
+          }
+        >
+          <Text style={styles.filterButtonText}>⚪ Neutre</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
   );
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <Text>Chargement de la collection...</Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2ecc71" />
+        <Text style={styles.loadingText}>Chargement de la collection...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>Erreur lors du chargement</Text>
+        <Text style={styles.errorDetails}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={loadCollection}>
+          <Text style={styles.retryButtonText}>Réessayer</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.searchContainer}>
-        <Ionicons
-          name="search"
-          size={20}
-          color="#666"
-          style={styles.searchIcon}
-        />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Rechercher une carte..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
+      <View style={styles.header}>
+        <Text style={styles.title}>📚 Ma Collection</Text>
+        <TouchableOpacity style={styles.refreshButton} onPress={loadCollection}>
+          <Text style={styles.refreshButtonText}>🔄</Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.filtersContainer}>
-        <Text style={styles.filtersTitle}>Éléments</Text>
-        <FlatList
-          horizontal
-          data={elements}
-          renderItem={({ item }) =>
-            renderFilterChip(
-              item,
-              selectedElement === item,
-              () => setSelectedElement(selectedElement === item ? null : item),
-              elementColors[item as keyof typeof elementColors]
-            )
-          }
-          keyExtractor={(item) => item}
-          showsHorizontalScrollIndicator={false}
-          style={styles.filtersList}
-        />
-
-        <Text style={styles.filtersTitle}>Raretés</Text>
-        <FlatList
-          horizontal
-          data={rarities}
-          renderItem={({ item }) =>
-            renderFilterChip(item, selectedRarity === item, () =>
-              setSelectedRarity(selectedRarity === item ? null : item)
-            )
-          }
-          keyExtractor={(item) => item}
-          showsHorizontalScrollIndicator={false}
-          style={styles.filtersList}
-        />
-      </View>
+      {renderStats()}
+      {renderFilters()}
 
       <FlatList
-        data={filteredCards}
-        renderItem={({ item }) => (
-          <CardItem
-            card={item.card}
-            quantity={item.quantity}
-            onPress={() =>
-              navigation.navigate("CardDetails", { cardId: item.card_id })
-            }
-          />
-        )}
-        keyExtractor={(item) => item.id}
+        data={cards}
+        renderItem={renderCard}
+        keyExtractor={(item) => item.card_id}
+        numColumns={2}
         contentContainerStyle={styles.cardsList}
+        showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>
-              {searchQuery || selectedElement || selectedRarity
-                ? "Aucune carte ne correspond à vos critères"
-                : "Votre collection est vide"}
+            <Text style={styles.emptyText}>Aucune carte trouvée</Text>
+            <Text style={styles.emptySubtext}>
+              Ouvrez des packs pour commencer votre collection !
             </Text>
           </View>
         }
@@ -185,68 +371,176 @@ export const Collection = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#1a1a1a",
   },
-  searchContainer: {
+  header: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "white",
-    margin: 16,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.41,
+    padding: 16,
+    backgroundColor: "#2a2a2a",
   },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  filtersContainer: {
-    paddingHorizontal: 16,
-  },
-  filtersTitle: {
-    fontSize: 16,
+  title: {
+    fontSize: 24,
     fontWeight: "bold",
+    color: "#fff",
+  },
+  refreshButton: {
+    padding: 8,
+  },
+  refreshButtonText: {
+    fontSize: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#1a1a1a",
+  },
+  loadingText: {
+    color: "#fff",
+    fontSize: 16,
+    marginTop: 16,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#1a1a1a",
+    padding: 20,
+  },
+  errorText: {
+    color: "#e74c3c",
+    fontSize: 18,
+    textAlign: "center",
     marginBottom: 8,
   },
-  filtersList: {
+  errorDetails: {
+    color: "#e74c3c",
+    fontSize: 14,
+    textAlign: "center",
     marginBottom: 16,
   },
-  filterChip: {
-    backgroundColor: "#fff",
+  retryButton: {
+    backgroundColor: "#2ecc71",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  statsContainer: {
+    backgroundColor: "#2a2a2a",
+    padding: 16,
+    marginBottom: 8,
+  },
+  statsTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#fff",
+    marginBottom: 12,
+  },
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginBottom: 16,
+  },
+  statItem: {
+    alignItems: "center",
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#2ecc71",
+  },
+  statLabel: {
+    fontSize: 12,
+    color: "#ccc",
+    marginTop: 4,
+  },
+  statsSubtitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#fff",
+    marginBottom: 8,
+  },
+  rarityStats: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  rarityItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 16,
+    marginBottom: 4,
+  },
+  rarityText: {
+    fontSize: 12,
+    fontWeight: "bold",
+    marginRight: 4,
+  },
+  rarityCount: {
+    fontSize: 12,
+    color: "#ccc",
+  },
+
+  filtersContainer: {
+    backgroundColor: "#2a2a2a",
+    padding: 16,
+    marginBottom: 8,
+  },
+  searchInput: {
+    backgroundColor: "#3a3a3a",
+    color: "#fff",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    fontSize: 16,
+  },
+  filterRow: {
+    marginBottom: 8,
+  },
+  filterButton: {
+    backgroundColor: "#3a3a3a",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     marginRight: 8,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.41,
   },
-  filterChipText: {
-    fontSize: 14,
-    textTransform: "capitalize",
+  filterButtonActive: {
+    backgroundColor: "#2ecc71",
+  },
+  filterButtonText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "bold",
   },
   cardsList: {
-    padding: 16,
+    padding: 8,
+  },
+  cardContainer: {
+    flex: 1,
+    margin: 4,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 32,
+    padding: 40,
   },
   emptyText: {
-    fontSize: 16,
-    color: "#666",
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#fff",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: "#ccc",
     textAlign: "center",
   },
 });
