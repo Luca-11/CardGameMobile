@@ -1,0 +1,43 @@
+services:
+  # 🐘 Base de données PostgreSQL
+  postgres:
+    image: postgres:15
+    container_name: cardgame_postgres
+    environment:
+      POSTGRES_DB: cardgame
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - cardgame_network
+    restart: unless-stopped
+
+  # 🖥️ Interface d'administration pgAdmin
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: cardgame_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@cardgame.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - cardgame_network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+
+networks:
+  cardgame_network:
+    driver: bridge

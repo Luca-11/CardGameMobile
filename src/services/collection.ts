@@ -7,26 +7,46 @@ export const collectionService = {
     try {
       console.log('🔍 Récupération de la collection pour l\'utilisateur:', userId);
       
-      // Appeler la fonction RPC pour récupérer la collection
-      const { data: cards, error } = await supabase.rpc('get_user_collection', {
-        p_user_id: userId
-      });
+      // Utiliser directement l'API REST au lieu de la fonction RPC
+      const { data: userCards, error: userCardsError } = await supabase
+        .from('user_cards')
+        .select(`
+          id,
+          card_id,
+          obtained_at,
+          cards (
+            id,
+            name,
+            description,
+            image_url,
+            rarity,
+            cost,
+            attack,
+            defense,
+            created_at,
+            updated_at
+          )
+        `)
+        .eq('user_id', userId);
 
-      if (error) {
-        console.error('❌ Erreur lors de la récupération de la collection:', error);
-        throw error;
+      if (userCardsError) {
+        console.error('❌ Erreur lors de la récupération de la collection:', userCardsError);
+        throw userCardsError;
       }
 
-      console.log('✅ Collection récupérée:', cards?.length || 0, 'cartes');
+      console.log('✅ Collection récupérée:', userCards?.length || 0, 'entrées');
+
+      // Transformer les données pour correspondre au format attendu
+      const cards: UserCard[] = this.transformUserCards(userCards || []);
 
       // Filtrer les cartes si des filtres sont fournis
-      let filteredCards = cards || [];
+      let filteredCards = cards;
       if (filters) {
-        filteredCards = this.filterCards(cards || [], filters);
+        filteredCards = this.filterCards(cards, filters);
       }
 
       // Calculer les statistiques
-      const stats = this.calculateStats(cards || []);
+      const stats = this.calculateStats(cards);
 
       return {
         cards: filteredCards,
@@ -37,6 +57,40 @@ export const collectionService = {
       console.error('❌ Erreur dans getUserCollection:', error);
       throw error;
     }
+  },
+
+  // Transformer les données de user_cards pour correspondre au format UserCard
+  transformUserCards(userCards: any[]): UserCard[] {
+    // Grouper les cartes par ID et compter les quantités
+    const cardMap = new Map<string, UserCard>();
+    
+    userCards.forEach(uc => {
+      if (!uc.cards) return; // Ignorer si pas de carte associée
+      
+      const cardId = uc.cards.id;
+      if (cardMap.has(cardId)) {
+        // Augmenter la quantité si la carte existe déjà
+        const existingCard = cardMap.get(cardId)!;
+        existingCard.quantity += 1;
+      } else {
+        // Créer une nouvelle entrée
+        cardMap.set(cardId, {
+          card_id: uc.cards.id,
+          card_name: uc.cards.name,
+          card_description: uc.cards.description || '',
+          card_image_url: uc.cards.image_url,
+          card_rarity: uc.cards.rarity,
+          card_cost: uc.cards.cost || 0,
+          card_attack: uc.cards.attack,
+          card_defense: uc.cards.defense,
+          quantity: 1,
+          card_created_at: uc.cards.created_at,
+          card_updated_at: uc.cards.updated_at
+        });
+      }
+    });
+
+    return Array.from(cardMap.values());
   },
 
   // Ajouter une carte à la collection
@@ -91,16 +145,6 @@ export const collectionService = {
       filtered = filtered.filter(card => card.card_rarity === filters.rarity);
     }
 
-    // Filtre par élément
-    if (filters.element) {
-      filtered = filtered.filter(card => card.card_element === filters.element);
-    }
-
-    // Filtre par type de carte
-    if (filters.card_type) {
-      filtered = filtered.filter(card => card.card_type === filters.card_type);
-    }
-
     // Filtre par recherche textuelle
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
@@ -124,17 +168,17 @@ export const collectionService = {
             aValue = this.getRarityWeight(a.card_rarity);
             bValue = this.getRarityWeight(b.card_rarity);
             break;
-          case 'mana_cost':
-            aValue = a.card_mana_cost;
-            bValue = b.card_mana_cost;
+          case 'cost':
+            aValue = a.card_cost;
+            bValue = b.card_cost;
             break;
           case 'attack':
-            aValue = a.card_attack;
-            bValue = b.card_attack;
+            aValue = a.card_attack || 0;
+            bValue = b.card_attack || 0;
             break;
           case 'defense':
-            aValue = a.card_defense;
-            bValue = b.card_defense;
+            aValue = a.card_defense || 0;
+            bValue = b.card_defense || 0;
             break;
           default:
             aValue = a.card_name;
@@ -159,33 +203,20 @@ export const collectionService = {
       unique_cards: cards.length,
       by_rarity: {
         common: 0,
-        uncommon: 0,
         rare: 0,
         epic: 0,
         legendary: 0
       },
-      by_element: {
-        fire: 0,
-        water: 0,
-        earth: 0,
-        air: 0,
-        neutral: 0
-      },
       completion_percentage: 0
     };
 
-    // Compter les cartes par rareté et élément
+    // Compter les cartes par rareté
     cards.forEach(card => {
       stats.total_cards += card.quantity;
       
       // Compter par rareté
       if (card.card_rarity in stats.by_rarity) {
         stats.by_rarity[card.card_rarity as keyof typeof stats.by_rarity] += card.quantity;
-      }
-      
-      // Compter par élément
-      if (card.card_element in stats.by_element) {
-        stats.by_element[card.card_element as keyof typeof stats.by_element] += card.quantity;
       }
     });
 
@@ -199,10 +230,9 @@ export const collectionService = {
   getRarityWeight(rarity: string): number {
     const weights = {
       common: 1,
-      uncommon: 2,
-      rare: 3,
-      epic: 4,
-      legendary: 5
+      rare: 2,
+      epic: 3,
+      legendary: 4
     };
     return weights[rarity as keyof typeof weights] || 0;
   }
